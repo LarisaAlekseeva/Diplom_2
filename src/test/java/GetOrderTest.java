@@ -1,24 +1,65 @@
 import io.qameta.allure.junit4.DisplayName;
-import io.restassured.response.ValidatableResponse;
+import org.junit.After;
+import org.junit.Before;
 import org.junit.Test;
-import static org.hamcrest.CoreMatchers.equalTo;
+import pojo.Order;
+import pojo.User;
+import praktikum.OrderSteps;
+import praktikum.UserSteps;
 
-public class GetOrderTest extends BaseTest {
+import java.util.List;
 
-    @Test
-    @DisplayName("Получение заказов авторизованного пользователя")
-    public void getAuthUserOrdersTest() {
-        steps.createUser(user);
-        ValidatableResponse response = steps.loginUser(login);
-        accessToken = response.extract().path("accessToken").toString();
-        steps.createOrderLoggedUser(accessToken);
-        steps.getUserOrders(accessToken);
+import static org.apache.http.HttpStatus.*;
+import static org.hamcrest.CoreMatchers.is;
+
+public class GetOrderTest {
+    private UserSteps userSteps;
+    private OrderSteps orderSteps;
+    private String accessToken;
+    private User user;
+    private Order order;
+    private List<String> ingredientsList;
+
+    @Before
+    public void setUp() {
+        userSteps = new UserSteps();
+        orderSteps = new OrderSteps();
+        user = User.getRandomUser();
+        accessToken = userSteps.createUser(user).extract().path("accessToken");
+        ingredientsList = orderSteps.getAllIngredients().extract().path("data._id");
+    }
+
+    @After
+    @DisplayName("Удаление пользователя")
+    public void deleteUser() {
+        if (accessToken != null) {
+            userSteps.deleteUser(accessToken).assertThat().statusCode(SC_ACCEPTED)
+                    .body("success", is(true));
+        }
     }
 
     @Test
-    @DisplayName("Получение заказов не авторизованного пользователя")
-    public void getNotAuthUserOrdersTest() {
-        ValidatableResponse response = steps.getListOfOrdersWithoutUserToken();
-        response.assertThat().statusCode(401).and().body("message", equalTo("You should be authorised"));
+    @DisplayName("Получение заказов авторизованного пользователя")
+    public void getOrdersAuthorizedUserTest() {
+        order = new Order(Order.getRandomIngredients(ingredientsList));
+        orderSteps.createOrderLoggedUser(order, accessToken)
+                .assertThat()
+                .statusCode(SC_OK)
+                .body("success", is(true));
+        orderSteps.getUserOrders(accessToken)
+                .assertThat()
+                .statusCode(SC_OK)
+                .body("success", is(true));
+    }
+
+    @Test
+    @DisplayName("Получение заказов неавторизованного пользователя")
+    public void getOrdersNotAuthorizedUserTest() {
+        order = new Order(Order.getRandomIngredients(ingredientsList));
+        orderSteps.getListOfOrdersWithoutUserToken()
+                .assertThat()
+                .statusCode(SC_UNAUTHORIZED)
+                .body("success", is(false))
+                .body("message", is("You should be authorised"));
     }
 }
